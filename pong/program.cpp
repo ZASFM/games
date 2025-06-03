@@ -1,10 +1,57 @@
 #include <iostream>
 #include <time.h>
-//#include <conio.h>
-#include <termios.h> 
-#include <unistd.h>  
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
+
 
 using namespace std;
+
+
+//simulates _kbhit()
+int kbhit() {
+    termios oldt, newt;
+    int ch;
+    int oldf;
+    
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO); // disable buffering
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    
+    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
+    
+    ch = getchar();
+    
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    fcntl(STDIN_FILENO, F_SETFL, oldf);
+    
+    if (ch != EOF) {
+        ungetc(ch, stdin);
+        return 1;
+    }
+    
+    return 0;
+}
+
+//simulates _getch()
+char getch() {
+    char buf = 0;
+    termios old = {};
+    if (tcgetattr(STDIN_FILENO, &old) < 0)
+        perror("tcgetattr()");
+    termios newt = old;
+    newt.c_lflag &= ~(ICANON | ECHO); // disable buffering
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) < 0)
+        perror("tcsetattr ICANON");
+    if (read(STDIN_FILENO, &buf, 1) < 0)
+        perror("read()");
+    if (tcsetattr(STDIN_FILENO, TCSADRAIN, &old) < 0)
+        perror("tcsetattr ~ICANON");
+    return buf;
+}
+
 
 //possible directions and positions
 enum eDir{ 
@@ -146,27 +193,166 @@ public:
       player1->Reset();
       player2->Reset();
    }
+
+   void Draw(){
+      system("cls");
+      for(int i=0;i<width+2;i++){
+         cout<<"#";
+      }
+      cout<<endl;
+      for(int i=0;i<height;i++){
+         for(int j=0;j<width;j++){
+            int ballx=ball->getX();
+            int bally=ball->getY();
+            int player1x=player1->getX();
+            int player2x=player2->getX();
+            int player1y=player1->getY();
+            int player2y=player2->getY();
+
+            if(j==0){
+               cout<<"\xB2";
+            }
+
+            if(ballx==j && bally==i){
+               //printin ball with o
+               cout<<"O";
+            }else if(player1x==j && player1y==i){
+               cout<<"\xDB";//player 1
+            }else if(player2x==j && player2y==i){
+               cout<<"\xDB";//player 2
+            }else if(player1x==j && player1y+1==i){
+               cout<<"\xDB";//player 1
+            }else if(player1x==j && player1y+2==i){
+               cout<<"\xDB";//player 1
+            }else if(player1x==j && player1y+3==i){
+               cout<<"\xDB";//player 1
+            }else if(player2x==j && player2y+1==i){
+               cout<<"\xDB";//player 1
+            }else if(player2x==j && player2y+2==i){
+               cout<<"\xDB";//player 1
+            }else if(player2x==j && player2y+3==i){
+               cout<<"\xDB";//player 1
+            }else{
+               cout<<" ";
+            }
+
+            if(j==width-1){
+               cout<<"\xB2";
+            }
+         }
+         cout<<endl;
+      }
+      for(int i=0;i<width+2;i++){
+         cout<<"\xB2";
+      }
+      cout<<endl;
+
+      //printing score:
+      cout<<"Score 1:"<<score1<<endl;cout<<"Score 2"<<score2<<endl;
+   }
+
+   void Input(){
+      ball->Move();
+      int ballx=ball->getX();
+      int bally=ball->getY();
+      int player1x=player1->getX();
+      int player2x=player2->getX();
+      int player1y=player1->getY();
+      int player2y=player2->getY();
+
+      if(kbhit()){
+         char current=getch();
+
+         if(current==up1){
+            if(player1y>0){
+               player1->moveUp();
+            }
+         }
+
+         if(current==up2){
+            if(player2y>0){
+               player2->moveUp();
+            }
+         }
+
+         if(current==down1){
+            if(player1y+4<height){
+               player1->moveDown();
+            }
+         }
+
+         if(current==down2){
+            if(player2y+4<height){
+               player2->moveDown();
+            }
+         }
+
+         if(ball->getDirection()==STOP){
+            ball->randomDirection();
+         }
+
+         if(current=='q'){
+            quit=true;
+         }
+
+      }
+   }
+
+   void Logic(){
+      int ballx=ball->getX();
+      int bally=ball->getY();
+      int player1x=player1->getX();
+      int player2x=player2->getX();
+      int player1y=player1->getY();
+      int player2y=player2->getY();
+
+      //left paddle
+      for(int i=0;i<4;i++){
+         if(ballx==player1x+1){
+            if(bally==player1y+i){
+               ball->changeDirection((eDir)((rand()%3)+4));
+            }
+         }
+      }
+
+      //right paddle
+      for(int i=0;i<4;i++){
+         if(ballx==player2x-1){
+            if(bally==player2y+i){
+               ball->changeDirection((eDir)((rand()%3)+1));
+            }
+         }
+      }
+
+      //bottom wall
+      if(bally==height-1){
+         ball->changeDirection(ball->getDirection()==DOWNRIGHT?UPRIGHT:UPLEFT);
+      }
+      //top wall
+      if(bally==0){
+         ball->changeDirection(ball->getDirection()==UPRIGHT?DOWNRIGHT:DOWNLEFT);
+      }
+      //right wall;
+      if(ballx==width-1){
+         scoreUp(player1);
+      }
+      //left wall
+      if(ballx==0){
+         scoreUp(player2);
+      }
+   }
+
+   void Run(){
+      while(not quit){
+         Draw();
+         Input();
+         Logic();
+      }
+   }
 };
 
 int main(){
-   
-   cBall c(0,0);
-   cout<<c<<endl;
-   c.randomDirection();
-   cout<<c<<endl;
-   c.Move();
-   cout<<c<<endl;
-   c.randomDirection();
-   c.Move();
-   cout<<c<<endl;
-
-   cPaddle p1(0,0);
-   cPaddle p2(0,0);
-   cout<<p1<<endl;
-   cout<<p2<<endl;
-   p1.moveUp();
-   p1.moveDown();
-   cout<<p1<<endl;
-   cout<<p2<<endl;
+   cGameManager c(40,20);
+   c.Run();
    return 0;
 }
